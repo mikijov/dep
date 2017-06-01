@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 
@@ -29,8 +30,9 @@ import (
 // will return true. The implementation is *not* OS-specific, so a FAT32
 // filesystem mounted on Linux will be handled correctly.
 func HasFilepathPrefix(path, prefix string) bool {
-	if filepath.VolumeName(path) != filepath.VolumeName(prefix) {
-		return false
+	// on Windows simply compare strings as it's guaranteed case-insensitive
+	if runtime.GOOS == "windows" {
+		return strings.HasPrefix(strings.ToLower(path), strings.ToLower(prefix))
 	}
 
 	var dn string

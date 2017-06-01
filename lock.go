@@ -109,8 +109,12 @@ func fromRawLock(raw rawLock) (*Lock, error) {
 	return l, nil
 }
 
-func (l *Lock) InputHash() []byte {
-	return l.SolveMeta.InputsDigest
+// func (l *Lock) InputHash() []byte {
+// 	return l.SolveMeta.InputsDigest
+// }
+
+func (l *Lock) SolveMeta() SolveMeta {
+	return l.SolveMeta
 }
 
 func (l *Lock) Projects() []gps.LockedProject {

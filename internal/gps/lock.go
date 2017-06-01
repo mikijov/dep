@@ -20,6 +20,8 @@ type Lock interface {
 	// The hash of inputs to gps that resulted in this lock data
 	InputHash() []byte
 
+	SolveMeta() SolveMeta
+
 	// Projects returns the list of LockedProjects contained in the lock data.
 	Projects() []LockedProject
 }
@@ -82,6 +84,13 @@ var _ Lock = SimpleLock{}
 // as a stable lock to be written to disk, but still useful for some ephemeral
 // purposes.
 func (SimpleLock) InputHash() []byte {
+	return nil
+}
+
+// SolveMeta always returns nil for SimpleLock. This makes it useless as a
+// stable lock to be written to disk, but still useful for some ephemeral
+// purposes.
+func (SimpleLock) SolveMeta() SolveMeta {
 	return nil
 }
 

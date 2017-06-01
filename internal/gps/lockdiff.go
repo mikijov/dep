@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -41,13 +42,53 @@ func (diff *StringDiff) String() string {
 	return diff.Current
 }
 
+// IntDiff represents a modified integer value.
+// * Added: Previous = 0, Current != 0
+// * Deleted: Previous != 0, Current = 0
+// * Modified: Previous != 0, Current != 0
+// * No Change: Previous = Current
+type IntDiff struct {
+	Previous int
+	Current  int
+}
+
+func (diff *IntDiff) String() string {
+	if diff == nil {
+		return ""
+	}
+
+	if diff.Previous == 0 && diff.Current != 0 {
+		return fmt.Sprintf("+ %d", diff.Current)
+	}
+
+	if diff.Previous != 0 && diff.Current == 0 {
+		return fmt.Sprintf("- %d", diff.Previous)
+	}
+
+	if diff.Previous != diff.Current {
+		return fmt.Sprintf("%d -> %d", diff.Previous, diff.Current)
+	}
+
+	return strconv.Itoa(diff.Current)
+}
+
 // LockDiff is the set of differences between an existing lock file and an updated lock file.
 // Fields are only populated when there is a difference, otherwise they are empty.
 type LockDiff struct {
-	HashDiff *StringDiff
-	Add      []LockedProjectDiff
-	Remove   []LockedProjectDiff
-	Modify   []LockedProjectDiff
+	SolveMetaDiff *SolveMetaDiff
+	Add           []LockedProjectDiff
+	Remove        []LockedProjectDiff
+	Modify        []LockedProjectDiff
+}
+
+// SolveMetaDiff contains before and after of SolveMeta section of the lock file.
+// Fields are only populated when there is a difference, otherwise they are empty.
+type SolveMetaDiff struct {
+	InputsDigestDiff    *StringDiff
+	AnalyzerNameDiff    *StringDiff
+	AnalyzerVersionDiff *IntDiff
+	SolverNameDiff      *StringDiff
+	SolverVersionDiff   *IntDiff
 }
 
 // LockedProjectDiff contains the before and after snapshot of a project reference.
@@ -71,8 +112,14 @@ func DiffLocks(l1 Lock, l2 Lock) *LockDiff {
 	if l2 == nil {
 		l2 = &SimpleLock{}
 	}
-
 	p1, p2 := l1.Projects(), l2.Projects()
+
+	diff := LockDiff{}
+
+	// diff the SolveMeta
+	diff.SolveMetaDiff = buildSolveMetaDiff(l1, l2)
+
+	// now diff all the projects
 
 	// Check if the slices are sorted already. If they are, we can compare
 	// without copying. Otherwise, we have to copy to avoid altering the
@@ -87,14 +134,6 @@ func DiffLocks(l1 Lock, l2 Lock) *LockDiff {
 		p2 = make([]LockedProject, len(p2))
 		copy(p2, l2.Projects())
 		sort.Sort(lpsorter(p2))
-	}
-
-	diff := LockDiff{}
-
-	h1 := hex.EncodeToString(l1.InputHash())
-	h2 := hex.EncodeToString(l2.InputHash())
-	if h1 != h2 {
-		diff.HashDiff = &StringDiff{Previous: h1, Current: h2}
 	}
 
 	var i2next int
@@ -140,10 +179,53 @@ func DiffLocks(l1 Lock, l2 Lock) *LockDiff {
 		diff.Add = append(diff.Add, add)
 	}
 
-	if diff.HashDiff == nil && len(diff.Add) == 0 && len(diff.Remove) == 0 && len(diff.Modify) == 0 {
+	if diff.SolveMetaDiff == nil && len(diff.Add) == 0 && len(diff.Remove) == 0 && len(diff.Modify) == 0 {
 		return nil // The locks are the equivalent
 	}
 	return &diff
+}
+
+func buildSolveMetaDiff(l1, l2 Lock) *SolveMetaDiff {
+	meta1 := l1.SolveMeta()
+	meta2 := l2.SolveMeta()
+
+	var InputsDigestDiff *StringDiff
+	h1 := hex.EncodeToString(meta1.InputsDigest)
+	h2 := hex.EncodeToString(meta2.InputsDigest)
+	if h1 != h2 {
+		InputsDigestDiff = &StringDiff{Previous: h1, Current: h2}
+	}
+
+	var AnalyzerNameDiff *StringDiff
+	if meta1.AnalyzerName != meta2.AnalyzerName {
+		AnalyzerNameDiff = &StringDiff{Previous: meta1.AnalyzerName, Current: meta2.AnalyzerName}
+	}
+
+	var AnalyzerVersionDiff *IntDiff
+	if meta1.AnalyzerVersion != meta2.AnalyzerVersion {
+		AnalyzerVersionDiff = &StringDiff{Previous: meta1.AnalyzerVersion, Current: meta2.AnalyzerVersion}
+	}
+
+	var SolverNameDiff *StringDiff
+	if meta1.SolverName != meta2.SolverName {
+		SolverNameDiff = &StringDiff{Previous: meta1.SolverName, Current: meta2.SolverName}
+	}
+
+	var SolverVersionDiff *IntDiff
+	if meta1.SolverVersion != meta2.SolverVersion {
+		SolverNameDiff = &StringDiff{Previous: meta1.SolverVersion, Current: meta2.SolverVersion}
+	}
+
+	if InputsDigestDiff == nil && AnalyzerNameDiff == nil && AnalyzerVersionDiff == nil && SolverNameDiff == nil && SolverVersionDiff == nil {
+		return nil
+	}
+
+	return &SolveMetaDiff{
+		InputsDigestDiff:    InputsDigestDiff,
+		AnalyzerNameDiff:    AnalyzerNameDiff,
+		AnalyzerVersionDiff: AnalyzerVersionDiff,
+		SolverNameDiff:      SolverNameDiff,
+		SolverVersionDiff:   SolverVersionDiff}
 }
 
 func buildLockedProjectDiff(lp LockedProject) LockedProjectDiff {

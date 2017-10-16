@@ -8,10 +8,39 @@ import (
 	"github.com/golang/dep/internal/gps/pkgtree"
 )
 
-func FindIneffectualConstraints(manifest Manifest, packageTree pkgtree.PackageTree) []ProjectRoot {
-	var stdLibFn func(string) bool
+type Ineffectuals struct {
+	constraints []ProjectRoot
+	ignores     []string
+}
+
+func (self Ineffectuals) AddConstraint(constraint ProjectRoot) {
+	if self.constraints == nil {
+		self.constraints = make([]ProjectRoot, 0, 10)
+	}
+	self.constraints = append(self.constraints, constraint)
+}
+
+func (self Ineffectuals) AddIgnore(ignore string) {
+	if self.ignores == nil {
+		self.ignores = make([]string, 0, 10)
+	}
+	self.ignores = append(self.ignores, ignore)
+}
+
+func (self Ineffectuals) IsEmpty() bool {
+	if self.constraints != nil && len(self.constraints) > 0 {
+		return false
+	}
+	if self.ignores != nil && len(self.ignores) > 0 {
+		return false
+	}
+	return true
+}
+
+func FindIneffectualRules(manifest Manifest, packageTree pkgtree.PackageTree, stdLibFn func(string) bool) *Ineffectuals {
 	// will track return value here
-	ineffectuals := make([]ProjectRoot, 0, 10)
+	// ineffectuals := make([]ProjectRoot, 0, 10)
+	ineffectuals := &Ineffectuals{}
 
 	// flatten list of actual imports which should be checked against
 	reachmap, _ := packageTree.ToReachMap(true, true, false, nil /*ignores*/)
@@ -31,7 +60,8 @@ func FindIneffectualConstraints(manifest Manifest, packageTree pkgtree.PackageTr
 		// check that ignores actually refer to packages we're importing
 		for ignore, _ := range rootManifest.IgnoredPackages() {
 			if _, found := imports[ignore]; !found {
-				ineffectuals = append(ineffectuals, ProjectRoot(ignore))
+				ineffectuals.AddIgnore(ignore)
+				// ineffectuals = append(ineffectuals, ProjectRoot(ignore))
 			}
 		}
 
@@ -46,20 +76,18 @@ func FindIneffectualConstraints(manifest Manifest, packageTree pkgtree.PackageTr
 	for projectRoot, _ := range manifest.DependencyConstraints() {
 		constraints[projectRoot] = true
 	}
-	for projectRoot, _ := range manifest.TestDependencyConstraints() {
-		constraints[projectRoot] = true
-	}
 
 	// now check the constraints against the packageTree
 	for projectRoot, _ := range constraints {
-		if _, used := imports[string(projectRoot)]; !used {
-			ineffectuals = append(ineffectuals, projectRoot)
+		if imports[string(projectRoot)] {
+			ineffectuals.AddConstraint(projectRoot)
+			// ineffectuals = append(ineffectuals, projectRoot)
 		}
 	}
 
-	if len(ineffectuals) > 0 {
-		return ineffectuals
-	} else {
+	if ineffectuals.IsEmpty() {
 		return nil
+	} else {
+		return ineffectuals
 	}
 }
